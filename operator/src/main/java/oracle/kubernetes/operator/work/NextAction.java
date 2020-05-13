@@ -26,6 +26,14 @@ public final class NextAction {
   }
 
   /**
+   * Returns true if this action indicates that the fiber should be suspended.
+   * @return an indicator of the suspense state
+   */
+  public boolean isSuspended() {
+    return kind == Kind.SUSPEND;
+  }
+
+  /**
    * Indicates that the next action should be to invoke the next step's {@link Step#apply(Packet)}.
    *
    * @param next Next step
