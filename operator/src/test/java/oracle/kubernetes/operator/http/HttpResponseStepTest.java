@@ -57,7 +57,7 @@ public class HttpResponseStepTest {
   @Test
   public void whenResponseIsSuccess_invokeOnSuccess() {
     Packet packet = new Packet();
-    HttpResponseStep.addToPacket(packet, createStub(ResponseStub.class, HttpURLConnection.HTTP_OK));
+    HttpResponseStep.addToPacket(packet, createStub(HttpResponseStub.class, HttpURLConnection.HTTP_OK));
 
     responseStep.apply(packet);
 
@@ -68,26 +68,12 @@ public class HttpResponseStepTest {
   @Test
   public void whenResponseIsFailure_invokeOnFailure() {
     Packet packet = new Packet();
-    HttpResponseStep.addToPacket(packet, createStub(ResponseStub.class, HttpURLConnection.HTTP_FORBIDDEN));
+    HttpResponseStep.addToPacket(packet, createStub(HttpResponseStub.class, HttpURLConnection.HTTP_FORBIDDEN));
 
     responseStep.apply(packet);
 
     assertThat(responseStep.getSuccessResponse(), nullValue());
     assertThat(responseStep.getFailureResponse(), notNullValue());
-  }
-
-  abstract static class ResponseStub implements HttpResponse<String> {
-
-    private int statusCode;
-
-    ResponseStub(int statusCode) {
-      this.statusCode = statusCode;
-    }
-
-    @Override
-    public int statusCode() {
-      return statusCode;
-    }
   }
 
   // todo when response is failure, invoke onFailure
