@@ -344,7 +344,7 @@ public class JobHelper {
               context.createNewJob(
                     readDomainIntrospectorPodLogStep(
                           deleteDomainIntrospectorJobStep(
-                                ConfigMapHelper.createGeneratedDomainConfigMapStep(getNext())))),
+                                ConfigMapHelper.createIntrospectorConfigMapStep(getNext())))),
               packet);
       }
 

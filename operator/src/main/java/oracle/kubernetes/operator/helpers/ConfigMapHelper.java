@@ -52,7 +52,8 @@ public class ConfigMapHelper {
   }
 
   /**
-   * Factory for {@link Step} that creates config map containing scripts.
+   * Creates a step that creates and/or updates the config map containing scripts. One of these is
+   * maintained for each namespace.
    *
    * @param operatorNamespace the operator's namespace
    * @param domainNamespace the domain's namespace
@@ -62,59 +63,56 @@ public class ConfigMapHelper {
     return new ScriptConfigMapStep(operatorNamespace, domainNamespace);
   }
 
+  /**
+   * Creates a step that creates and/or updates the introspector config map from introspection results. One of
+   * these is maintained for each domain.
+   * Reads the following packet fields:
+   *   DOMAIN_INTROSPECTOR_LOG_RESULT     the introspection result
+   * and updates:
+   *   DOMAIN_TOPOLOGY                    the parsed topology
+   *   DOMAIN_HASH                        a hash of the topology
+   *   SECRETS_HASH                       a hash of the override secrets
+   *   DOMAIN_RESTART_VERSION             a field from the domain to force rolling when changed
+   *   DOMAIN_INPUTS_HASH                 a hash of the image used in the domain
+   *
+   * @param next Next step
+   * @return Step for creating config map containing sit config
+   */
+  public static Step createIntrospectorConfigMapStep(Step next) {
+    return new IntrospectorConfigMapStep(next);
+  }
+
+  /**
+   * Creates a step to read the introspector CM for the specified domain, populating the following packet entries:
+   *   DOMAIN_TOPOLOGY                    the parsed topology
+   *   DOMAIN_HASH                        a hash of the topology
+   *   SECRETS_HASH                       a hash of the override secrets
+   *   DOMAIN_RESTART_VERSION             a field from the domain to force rolling when changed
+   *   DOMAIN_INPUTS_HASH                 a hash of the image used in the domain.
+   *
+   * @param ns the namespace of the domain
+   * @param domainUid the unique domain ID
+   * @return a step to do the processing.
+   */
+  public static Step readIntrospectorConfigMap(String ns, String domainUid) {
+    return new CallBuilder()
+                  .readConfigMapAsync(getIntrospectorConfigMapName(domainUid), ns, new IntrospectorConfigMapReadStep());
+  }
+
+  /**
+   * Factory for a step that deletes the introspector config map.
+   *
+   * @param domainUid The unique identifier assigned to the WebLogic domain when it was registered
+   * @param namespace the domain namespace
+   * @param next the next step to run after the map is deleted
+   * @return the created step
+   */
+  public static Step deleteIntrospectorConfigMapStep(String domainUid, String namespace, Step next) {
+    return new DeleteIntrospectorConfigMapStep(domainUid, namespace, next);
+  }
+
   static FileGroupReader getScriptReader() {
     return scriptReader;
-  }
-
-  static Map<String, String> parseIntrospectorResult(String text, String domainUid) {
-    Map<String, String> map = new HashMap<>();
-    String token = ">>>  updatedomainResult=";
-
-    try (BufferedReader reader = new BufferedReader(new StringReader(text))) {
-      String line = reader.readLine();
-      while (line != null) {
-        if (line.contains(token)) {
-          int index = line.indexOf(token);
-          int beg = index + 1 + token.length();
-          map.put("UPDATEDOMAINRESULT", line.substring(beg - 1));
-        }
-        if (line.startsWith(">>>") && !line.endsWith("EOF")) {
-          String filename = extractFilename(line);
-          readFile(reader, filename, map, domainUid);
-        }
-        line = reader.readLine();
-      }
-    } catch (IOException exc) {
-      LOGGER.warning(MessageKeys.CANNOT_PARSE_INTROSPECTOR_RESULT, domainUid, exc);
-    }
-
-    return map;
-  }
-
-  static void readFile(
-      BufferedReader reader, String fileName, Map<String, String> map, String domainUid) {
-    StringBuilder stringBuilder = new StringBuilder();
-    try {
-      String line = reader.readLine();
-      while (line != null) {
-        if (line.startsWith(">>>") && line.endsWith("EOF")) {
-          map.put(fileName, stringBuilder.toString().trim());
-          return;
-        } else {
-          // add line to StringBuilder
-          stringBuilder.append(line);
-          stringBuilder.append(System.getProperty("line.separator"));
-        }
-        line = reader.readLine();
-      }
-    } catch (IOException ioe) {
-      LOGGER.warning(MessageKeys.CANNOT_PARSE_INTROSPECTOR_FILE, fileName, domainUid, ioe);
-    }
-  }
-
-  static String extractFilename(String line) {
-    int lastSlash = line.lastIndexOf('/');
-    return line.substring(lastSlash + 1);
   }
 
   /**
@@ -133,8 +131,8 @@ public class ConfigMapHelper {
    * Returns the standard name for the generated domain config map.
    * @param domainUid the unique ID of the domain
    */
-  public static String getDomainConfigMapName(String domainUid) {
-    return domainUid + KubernetesConstants.DOMAIN_CONFIG_MAP_NAME_SUFFIX;
+  public static String getIntrospectorConfigMapName(String domainUid) {
+    return domainUid + KubernetesConstants.INTROSPECTION_RESULT_CONFIG_MAP_NAME_SUFFIX;
   }
 
   /**
@@ -203,8 +201,6 @@ public class ConfigMapHelper {
     void recordCurrentMap(Packet packet, V1ConfigMap configMap) {
       packet.put(ProcessingConstants.SCRIPT_CONFIG_MAP, configMap);
     }
-
-
   }
 
   abstract static class ConfigMapContext {
@@ -374,29 +370,11 @@ public class ConfigMapHelper {
   }
 
   /**
-   * Factory for a step that creates or updates the generated domain config map from introspection results.
-   * Reads the following packet fields:
-   *   DOMAIN_INTROSPECTOR_LOG_RESULT     the introspection result
-   * and updates:
-   *   DOMAIN_TOPOLOGY                    the parsed topology
-   *   DOMAIN_HASH                        a hash of the topology
-   *   SECRETS_HASH                       a hash of the override secrets
-   *   DOMAIN_RESTART_VERSION             a field from the domain to force rolling when changed
-   *   DOMAIN_INPUTS_HASH                 a hash of the image used in the domain
-   *
-   * @param next Next step
-   * @return Step for creating config map containing sit config
+   * The first in a chain of steps to create a config map from introspection results.
    */
-  public static Step createGeneratedDomainConfigMapStep(Step next) {
-    return new DomainConfigMapStep(next);
-  }
+  static class IntrospectorConfigMapStep extends Step {
 
-  /**
-   * The first in a chain of steps to create the situation config map from introspection results.
-   */
-  static class DomainConfigMapStep extends Step {
-
-    DomainConfigMapStep(Step next) {
+    IntrospectorConfigMapStep(Step next) {
       super(next);
     }
 
@@ -436,7 +414,7 @@ public class ConfigMapHelper {
 
     private void parseIntrospectorResult() {
       String result = (String) packet.remove(ProcessingConstants.DOMAIN_INTROSPECTOR_LOG_RESULT);
-      data = ConfigMapHelper.parseIntrospectorResult(result, info.getDomainUid());
+      data = parseIntrospectorResult(result, info.getDomainUid());
 
       LOGGER.fine("================");
       LOGGER.fine(data.toString());
@@ -446,6 +424,57 @@ public class ConfigMapHelper {
             .map(IntrospectionLoader::getDomainTopology)
             .map(DomainTopology::getDomain)
             .orElse(null);
+    }
+
+    static Map<String, String> parseIntrospectorResult(String text, String domainUid) {
+      Map<String, String> map = new HashMap<>();
+      String token = ">>>  updatedomainResult=";
+
+      try (BufferedReader reader = new BufferedReader(new StringReader(text))) {
+        String line = reader.readLine();
+        while (line != null) {
+          if (line.contains(token)) {
+            int index = line.indexOf(token);
+            int beg = index + 1 + token.length();
+            map.put("UPDATEDOMAINRESULT", line.substring(beg - 1));
+          }
+          if (line.startsWith(">>>") && !line.endsWith("EOF")) {
+            String filename = extractFilename(line);
+            readFile(reader, filename, map, domainUid);
+          }
+          line = reader.readLine();
+        }
+      } catch (IOException exc) {
+        LOGGER.warning(MessageKeys.CANNOT_PARSE_INTROSPECTOR_RESULT, domainUid, exc);
+      }
+
+      return map;
+    }
+
+    static void readFile(
+        BufferedReader reader, String fileName, Map<String, String> map, String domainUid) {
+      StringBuilder stringBuilder = new StringBuilder();
+      try {
+        String line = reader.readLine();
+        while (line != null) {
+          if (line.startsWith(">>>") && line.endsWith("EOF")) {
+            map.put(fileName, stringBuilder.toString().trim());
+            return;
+          } else {
+            // add line to StringBuilder
+            stringBuilder.append(line);
+            stringBuilder.append(System.getProperty("line.separator"));
+          }
+          line = reader.readLine();
+        }
+      } catch (IOException ioe) {
+        LOGGER.warning(MessageKeys.CANNOT_PARSE_INTROSPECTOR_FILE, fileName, domainUid, ioe);
+      }
+    }
+
+    static String extractFilename(String line) {
+      int lastSlash = line.lastIndexOf('/');
+      return line.substring(lastSlash + 1);
     }
 
     private void updatePacket() {
@@ -464,8 +493,8 @@ public class ConfigMapHelper {
             createDomainConfigMapContext(conflictStep).verifyConfigMap(conflictStep.getNext()));
     }
 
-    private DomainConfigMapContext createDomainConfigMapContext(Step conflictStep) {
-      return new DomainConfigMapContext(conflictStep, info.getDomain(), data);
+    private IntrospectorConfigMapContext createDomainConfigMapContext(Step conflictStep) {
+      return new IntrospectorConfigMapContext(conflictStep, info.getDomain(), data);
     }
 
     private String getModelInImageSpecHash() {
@@ -505,28 +534,28 @@ public class ConfigMapHelper {
   }
 
   /**
-   * Creates a step to add entries to the generated domain config map. Uses Packet.getSpi to retrieve
+   * Creates a step to add entries to the introspector config map. Uses Packet.getSpi to retrieve
    * the current domain presence info.
    *
    *
    * @param domain the domain associated with the map
-   * @param additionalEntries a map of entries to add
+   * @param entries a map of entries to add
    * @param next the next step to process after the config map is updated
    * @return the created step
    */
-  public static Step addDomainConfigMapEntriesStep(Domain domain, Map<String, String> additionalEntries, Step next) {
-    return new AddDomainConfigEntriesStep(domain, additionalEntries, next);
+  public static Step addIntrospectorConfigMapEntriesStep(Domain domain, Map<String, String> entries, Step next) {
+    return new AddIntrospectorConfigEntriesStep(domain, entries, next);
   }
 
   /**
    * A step which starts a chain to add entries to the domain config map.
    */
-  static class AddDomainConfigEntriesStep extends Step {
+  static class AddIntrospectorConfigEntriesStep extends Step {
 
     private final Domain domain;
     private final Map<String, String> additionalEntries;
 
-    public AddDomainConfigEntriesStep(Domain domain, Map<String, String> additionalEntries, Step next) {
+    public AddIntrospectorConfigEntriesStep(Domain domain, Map<String, String> additionalEntries, Step next) {
       super(next);
       this.domain = domain;
       this.additionalEntries = new HashMap<>(additionalEntries);
@@ -534,19 +563,22 @@ public class ConfigMapHelper {
 
     @Override
     public NextAction apply(Packet packet) {
-      final Step updateStep = new DomainConfigMapContext(this, domain, additionalEntries).verifyConfigMap(getNext());
-      return doNext(updateStep, packet);
+      return doNext(createContext().verifyConfigMap(getNext()), packet);
+    }
+
+    private IntrospectorConfigMapContext createContext() {
+      return new IntrospectorConfigMapContext(this, domain, additionalEntries);
     }
   }
 
-  public static class DomainConfigMapContext extends ConfigMapContext {
+  public static class IntrospectorConfigMapContext extends ConfigMapContext {
     final String domainUid;
 
-    DomainConfigMapContext(
+    IntrospectorConfigMapContext(
           Step conflictStep,
           Domain domain,
           Map<String, String> data) {
-      super(conflictStep, getDomainConfigMapName(domain.getDomainUid()), domain.getNamespace(), data);
+      super(conflictStep, getIntrospectorConfigMapName(domain.getDomainUid()), domain.getNamespace(), data);
 
       this.domainUid = domain.getDomainUid();
     }
@@ -558,23 +590,11 @@ public class ConfigMapHelper {
 
   }
 
-  /**
-   * Factory for a step that deletes the generated domain config map.
-   *
-   * @param domainUid The unique identifier assigned to the WebLogic domain when it was registered
-   * @param namespace the domain namespace
-   * @param next the next step to run after the map is deleted
-   * @return the created step
-   */
-  public static Step deleteGeneratedDomainConfigMapStep(String domainUid, String namespace, Step next) {
-    return new DeleteGeneratedDomainConfigMapStep(domainUid, namespace, next);
-  }
-
-  private static class DeleteGeneratedDomainConfigMapStep extends Step {
+  private static class DeleteIntrospectorConfigMapStep extends Step {
     private final String domainUid;
     private final String namespace;
 
-    DeleteGeneratedDomainConfigMapStep(String domainUid, String namespace, Step next) {
+    DeleteIntrospectorConfigMapStep(String domainUid, String namespace, Step next) {
       super(next);
       this.domainUid = domainUid;
       this.namespace = namespace;
@@ -587,7 +607,7 @@ public class ConfigMapHelper {
 
     String getConfigMapDeletedMessageKey() {
       return "Generated domain config map "
-          + getDomainConfigMapName(this.domainUid)
+          + getIntrospectorConfigMapName(this.domainUid)
           + " deleted";
     }
 
@@ -597,32 +617,15 @@ public class ConfigMapHelper {
 
     private Step deleteDomainConfigMap(Step next) {
       logConfigMapDeleted();
-      String configMapName = getDomainConfigMapName(this.domainUid);
+      String configMapName = getIntrospectorConfigMapName(this.domainUid);
       return new CallBuilder()
           .deleteConfigMapAsync(configMapName, namespace, new V1DeleteOptions(), new DefaultResponseStep<>(next));
     }
   }
 
-  /**
-   * Reads the generated domain config map for the specified domain, populating the following packet entries:
-   *   DOMAIN_TOPOLOGY                    the parsed topology
-   *   DOMAIN_HASH                        a hash of the topology
-   *   SECRETS_HASH                       a hash of the override secrets
-   *   DOMAIN_RESTART_VERSION             a field from the domain to force rolling when changed
-   *   DOMAIN_INPUTS_HASH                 a hash of the image used in the domain.
-   *
-   * @param ns the namespace of the domain
-   * @param domainUid the unique domain ID
-   * @return a step to do the processing.
-   */
-  public static Step readExistingDomainConfigMap(String ns, String domainUid) {
-    String domainConfigMapName = getDomainConfigMapName(domainUid);
-    return new CallBuilder().readConfigMapAsync(domainConfigMapName, ns, new ReadDomainConfigMapStep());
-  }
+  private static class IntrospectorConfigMapReadStep extends DefaultResponseStep<V1ConfigMap> {
 
-  private static class ReadDomainConfigMapStep extends DefaultResponseStep<V1ConfigMap> {
-
-    ReadDomainConfigMapStep() {
+    IntrospectorConfigMapReadStep() {
     }
 
     @Override
@@ -682,7 +685,7 @@ public class ConfigMapHelper {
    */
   public static Step createOverrideDetectionStep(Domain domain, Step next) {
     return Step.chain(
-          readExistingDomainConfigMap(domain.getNamespace(), domain.getDomainUid()),
+          readIntrospectorConfigMap(domain.getNamespace(), domain.getDomainUid()),
           new OverrideDetectionStep(domain),
           next);
   }
@@ -702,7 +705,7 @@ public class ConfigMapHelper {
         return doNext(packet);
       } else {
         packet.put(OVERRIDES_MODIFIED, true);
-        return doNext(addDomainConfigMapEntriesStep(domain, createNewValues(overridesState), getNext()), packet);
+        return doNext(addIntrospectorConfigMapEntriesStep(domain, createNewValues(overridesState), getNext()), packet);
       }
     }
 

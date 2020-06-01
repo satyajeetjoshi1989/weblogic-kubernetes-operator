@@ -13,8 +13,8 @@ import io.kubernetes.client.openapi.models.V1ConfigMap;
 import io.kubernetes.client.openapi.models.V1ObjectMeta;
 import oracle.kubernetes.operator.DomainConfigMapKeys;
 import oracle.kubernetes.operator.helpers.ConfigMapHelper;
-import oracle.kubernetes.operator.helpers.DomainConfigTestUtils;
 import oracle.kubernetes.operator.helpers.DomainPresenceInfo;
+import oracle.kubernetes.operator.helpers.IntrospectorConfigMapTestUtils;
 import oracle.kubernetes.operator.helpers.KubernetesTestSupport;
 import oracle.kubernetes.operator.work.Packet;
 import oracle.kubernetes.operator.work.TerminalStep;
@@ -58,7 +58,7 @@ public class ConfigurationOverrideDistributionTest {
 
   private void defineDomainConfigMap(Map<String, String> data) {
     testSupport.defineResources(new V1ConfigMap()
-          .metadata(new V1ObjectMeta().namespace(NS).name(ConfigMapHelper.getDomainConfigMapName(UID)))
+          .metadata(new V1ObjectMeta().namespace(NS).name(ConfigMapHelper.getIntrospectorConfigMapName(UID)))
           .data(new HashMap<>(data)));
   }
 
@@ -119,7 +119,7 @@ public class ConfigurationOverrideDistributionTest {
     testSupport.addDomainPresenceInfo(new DomainPresenceInfo(domain1));
     testSupport.runSteps(createOverrideDetectionStep(domain1, terminalStep));
 
-    assertThat(DomainConfigTestUtils.getDomainConfigMapData(testSupport),
+    assertThat(IntrospectorConfigMapTestUtils.getIntrospectorConfigMapData(testSupport),
           hasEntry(DomainConfigMapKeys.CONFIGURATION_OVERRIDES, createOverridesState(domain1)));
   }
 }

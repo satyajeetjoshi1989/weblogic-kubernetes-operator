@@ -319,7 +319,7 @@ public class DomainProcessorTest {
   }
 
   private V1ObjectMeta createGeneratedDomainMapMeta() {
-    return new V1ObjectMeta().namespace(NS).name(ConfigMapHelper.getDomainConfigMapName(UID));
+    return new V1ObjectMeta().namespace(NS).name(ConfigMapHelper.getIntrospectorConfigMapName(UID));
   }
 
   private String defineTopology() throws JsonProcessingException {

@@ -39,6 +39,7 @@ import static oracle.kubernetes.operator.DomainConfigMapKeys.TOPOLOGY_YAML;
 import static oracle.kubernetes.operator.DomainProcessorTestSetup.NS;
 import static oracle.kubernetes.operator.DomainProcessorTestSetup.UID;
 import static oracle.kubernetes.operator.ProcessingConstants.DOMAIN_TOPOLOGY;
+import static oracle.kubernetes.operator.helpers.IntrospectorConfigMapTestUtils.getIntrospectorConfigMapName;
 import static org.hamcrest.Matchers.allOf;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.hasEntry;
@@ -47,7 +48,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.hamcrest.junit.MatcherAssert.assertThat;
 
-public class DomainConfigTest {
+public class IntrospectorConfigMapTest {
 
   private static final String TOPOLOGY_VALUE = "domainValid: true\ndomain:\n  name: sample";
   private static final String DOMAIN_HASH_VALUE = "MII_domain_hash";
@@ -100,7 +101,7 @@ public class DomainConfigTest {
   public void whenNoTopologySpecified_abortProcessing() {
     introspectResult.defineFile(SECRETS_MD_5, "not telling").addToPacket();
 
-    testSupport.runSteps(ConfigMapHelper.createGeneratedDomainConfigMapStep(terminalStep));
+    testSupport.runSteps(ConfigMapHelper.createIntrospectorConfigMapStep(terminalStep));
 
     assertThat(terminalStep.wasRun(), is(false));
   }
@@ -109,7 +110,7 @@ public class DomainConfigTest {
   public void whenTopologyNotValid_abortProcessing() {
     introspectResult.defineFile(TOPOLOGY_YAML, "domainValid: false", "validationErrors: []").addToPacket();
 
-    testSupport.runSteps(ConfigMapHelper.createGeneratedDomainConfigMapStep(terminalStep));
+    testSupport.runSteps(ConfigMapHelper.createIntrospectorConfigMapStep(terminalStep));
 
     assertThat(terminalStep.wasRun(), is(false));
   }
@@ -119,7 +120,7 @@ public class DomainConfigTest {
     introspectResult
           .defineFile(TOPOLOGY_YAML, "domainValid: true", "domain:", "  name: \"sample\"").addToPacket();
 
-    testSupport.runSteps(ConfigMapHelper.createGeneratedDomainConfigMapStep(terminalStep));
+    testSupport.runSteps(ConfigMapHelper.createIntrospectorConfigMapStep(terminalStep));
 
     assertThat(terminalStep.wasRun(), is(true));
   }
@@ -129,7 +130,7 @@ public class DomainConfigTest {
     introspectResult
           .defineFile(TOPOLOGY_YAML, "domainValid: true", "domain:", "  name: \"sample\"").addToPacket();
 
-    Packet packet = testSupport.runSteps(ConfigMapHelper.createGeneratedDomainConfigMapStep(terminalStep));
+    Packet packet = testSupport.runSteps(ConfigMapHelper.createIntrospectorConfigMapStep(terminalStep));
 
     assertThat(packet.get(DOMAIN_TOPOLOGY), instanceOf(WlsDomainConfig.class));
   }
@@ -141,7 +142,7 @@ public class DomainConfigTest {
           .defineFile(DOMAINZIP_HASH, DOMAIN_HASH_VALUE)
           .addToPacket();
 
-    Packet packet = testSupport.runSteps(ConfigMapHelper.createGeneratedDomainConfigMapStep(terminalStep));
+    Packet packet = testSupport.runSteps(ConfigMapHelper.createIntrospectorConfigMapStep(terminalStep));
 
     assertThat(packet.get(DOMAINZIP_HASH), equalTo(DOMAIN_HASH_VALUE));
   }
@@ -153,14 +154,14 @@ public class DomainConfigTest {
           .defineFile(DOMAINZIP_HASH, DOMAIN_HASH_VALUE)
           .addToPacket();
 
-    testSupport.runSteps(ConfigMapHelper.createGeneratedDomainConfigMapStep(terminalStep));
+    testSupport.runSteps(ConfigMapHelper.createIntrospectorConfigMapStep(terminalStep));
 
-    assertThat(getDomainConfigMapData(), hasEntry(DOMAINZIP_HASH, DOMAIN_HASH_VALUE));
+    assertThat(getIntrospectorConfigMapData(), hasEntry(DOMAINZIP_HASH, DOMAIN_HASH_VALUE));
   }
 
-  public Map<String, String> getDomainConfigMapData() {
+  public Map<String, String> getIntrospectorConfigMapData() {
     final KubernetesTestSupport testSupport = this.testSupport;
-    return DomainConfigTestUtils.getDomainConfigMapData(testSupport);
+    return IntrospectorConfigMapTestUtils.getIntrospectorConfigMapData(testSupport);
   }
 
   @Test
@@ -170,7 +171,7 @@ public class DomainConfigTest {
           .defineFile(SECRETS_MD_5, MD5_SECRETS)
           .addToPacket();
 
-    Packet packet = testSupport.runSteps(ConfigMapHelper.createGeneratedDomainConfigMapStep(terminalStep));
+    Packet packet = testSupport.runSteps(ConfigMapHelper.createIntrospectorConfigMapStep(terminalStep));
 
     assertThat(packet.get(SECRETS_MD_5), equalTo(MD5_SECRETS));
   }
@@ -182,7 +183,7 @@ public class DomainConfigTest {
           .defineFile(TOPOLOGY_YAML, "domainValid: true", "domain:", "  name: \"sample\"")
           .addToPacket();
 
-    Packet packet = testSupport.runSteps(ConfigMapHelper.createGeneratedDomainConfigMapStep(terminalStep));
+    Packet packet = testSupport.runSteps(ConfigMapHelper.createIntrospectorConfigMapStep(terminalStep));
 
     assertThat(packet.get(DomainConfigMapKeys.DOMAIN_RESTART_VERSION), equalTo(RESTART_VERSION));
   }
@@ -198,39 +199,39 @@ public class DomainConfigTest {
           .defineFile(TOPOLOGY_YAML, "domainValid: true", "domain:", "  name: \"sample\"")
           .addToPacket();
 
-    Packet packet = testSupport.runSteps(ConfigMapHelper.createGeneratedDomainConfigMapStep(terminalStep));
+    Packet packet = testSupport.runSteps(ConfigMapHelper.createIntrospectorConfigMapStep(terminalStep));
 
     assertThat(packet.get(DOMAIN_INPUTS_HASH), notNullValue());
   }
 
   @Test
   public void whenDomainConfigMapExists_addEntries() {
-    testSupport.defineResources(createDomainConfigMap(Map.of(SECRETS_MD_5, MD5_SECRETS)));
+    testSupport.defineResources(createIntrospectorConfigMap(Map.of(SECRETS_MD_5, MD5_SECRETS)));
 
-    Step chain = ConfigMapHelper.addDomainConfigMapEntriesStep(domain, Map.of("a", "b", "c", "d"), terminalStep);
+    Step chain = ConfigMapHelper.addIntrospectorConfigMapEntriesStep(domain, Map.of("a", "b", "c", "d"), terminalStep);
     testSupport.runSteps(chain);
 
-    assertThat(getDomainConfigMapData(),
+    assertThat(getIntrospectorConfigMapData(),
           allOf(hasEntry(SECRETS_MD_5, MD5_SECRETS), hasEntry("a", "b"), hasEntry("c", "d")));
   }
 
-  private V1ConfigMap createDomainConfigMap(Map<String, String> entries) {
+  private V1ConfigMap createIntrospectorConfigMap(Map<String, String> entries) {
     return new V1ConfigMap()
-          .metadata(new V1ObjectMeta().name(DomainConfigTestUtils.getDomainConfigMapName()).namespace(NS))
+          .metadata(new V1ObjectMeta().name(getIntrospectorConfigMapName()).namespace(NS))
           .data(new HashMap<>(entries));
   }
 
   @Test
   public void whenDomainConfigMapDoesNotExist_addEntries() {
-    Step chain = ConfigMapHelper.addDomainConfigMapEntriesStep(domain, Map.of("a", "b", "c", "d"), terminalStep);
+    Step chain = ConfigMapHelper.addIntrospectorConfigMapEntriesStep(domain, Map.of("a", "b", "c", "d"), terminalStep);
     testSupport.runSteps(chain);
 
-    assertThat(getDomainConfigMapData(), allOf(hasEntry("a", "b"), hasEntry("c", "d")));
+    assertThat(getIntrospectorConfigMapData(), allOf(hasEntry("a", "b"), hasEntry("c", "d")));
   }
 
   @Test
   public void loadExistingEntriesFromDomainConfigMap() {
-    testSupport.defineResources(createDomainConfigMap(Map.of(
+    testSupport.defineResources(createIntrospectorConfigMap(Map.of(
           TOPOLOGY_YAML, TOPOLOGY_VALUE,
           SECRETS_MD_5, MD5_SECRETS,
           DOMAINZIP_HASH, DOMAIN_HASH_VALUE,
@@ -238,7 +239,7 @@ public class DomainConfigTest {
           DOMAIN_INPUTS_HASH, INPUTS_HASH_VALUE,
           CONFIGURATION_OVERRIDES, OVERRIDES_VALUE)));
 
-    Packet packet = testSupport.runSteps(ConfigMapHelper.readExistingDomainConfigMap(NS, UID));
+    Packet packet = testSupport.runSteps(ConfigMapHelper.readIntrospectorConfigMap(NS, UID));
 
     assertThat(packet.get(SECRETS_MD_5), equalTo(MD5_SECRETS));
     assertThat(packet.get(DOMAINZIP_HASH), equalTo(DOMAIN_HASH_VALUE));
